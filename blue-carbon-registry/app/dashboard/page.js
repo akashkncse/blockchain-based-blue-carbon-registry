@@ -20,6 +20,8 @@ export default function Dashboard() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState("");
   const [currentWallet, setCurrentWallet] = useState("");
+  const [userProfile, setUserProfile] = useState(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 
   // Load current wallet address from the session on component mount
   useEffect(() => {
@@ -27,6 +29,36 @@ export default function Dashboard() {
       setCurrentWallet(session.user.wallet);
     }
   }, [session]);
+
+  // Fetch fresh user profile data
+  const fetchUserProfile = async () => {
+    if (!session?.user?.id) return;
+
+    setIsLoadingProfile(true);
+    try {
+      const response = await fetch("/api/user/profile");
+      if (response.ok) {
+        const data = await response.json();
+        setUserProfile(data);
+      } else {
+        console.error("Failed to fetch user profile");
+      }
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  };
+
+  // Fetch user profile on component mount and set up periodic refresh
+  useEffect(() => {
+    fetchUserProfile();
+
+    // Refresh user profile every 30 seconds to check for status updates
+    const interval = setInterval(fetchUserProfile, 30000);
+
+    return () => clearInterval(interval);
+  }, [session?.user?.id]);
 
   const handleUpdateWallet = async () => {
     if (!isConnected || !address) {
@@ -58,6 +90,8 @@ export default function Dashboard() {
       if (response.ok) {
         setCurrentWallet(address);
         setMessage("Wallet address updated successfully!");
+        // Refresh the user profile to show updated wallet
+        await fetchUserProfile();
         // To see the change reflected immediately, it's best to refetch the session
         // or trigger a page reload after a short delay.
       } else {
@@ -92,28 +126,84 @@ export default function Dashboard() {
       {/* User Info Card */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>User Information</CardTitle>
-          <CardDescription>Your account details</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>User Information</CardTitle>
+              <CardDescription>
+                Your account details
+                {isLoadingProfile && (
+                  <span className="ml-2 text-xs text-blue-600">
+                    • Updating...
+                  </span>
+                )}
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchUserProfile}
+              disabled={isLoadingProfile}
+            >
+              {isLoadingProfile ? "Refreshing..." : "Refresh"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-gray-600">Name</label>
-              <p className="text-lg">{session.user.name}</p>
+              <p className="text-lg">
+                {userProfile?.name || session?.user?.name}
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-600">Email</label>
-              <p className="text-lg">{session.user.email}</p>
+              <p className="text-lg">
+                {userProfile?.email || session?.user?.email}
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-600">Role</label>
-              <p className="text-lg capitalize">{session.user.role}</p>
+              <p className="text-lg capitalize">
+                {userProfile?.role || session?.user?.role}
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-600">
                 Status
               </label>
-              <p className="text-lg capitalize">{session.user.status}</p>
+              <div className="flex items-center gap-2">
+                <p
+                  className={`text-lg capitalize font-medium ${
+                    (userProfile?.status || session?.user?.status) ===
+                    "approved"
+                      ? "text-green-600"
+                      : (userProfile?.status || session?.user?.status) ===
+                        "pending"
+                      ? "text-yellow-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {userProfile?.status || session?.user?.status}
+                </p>
+                {(userProfile?.status || session?.user?.status) ===
+                  "approved" && <span className="text-green-600">✓</span>}
+                {(userProfile?.status || session?.user?.status) ===
+                  "pending" && <span className="text-yellow-600">⏳</span>}
+              </div>
+              {(userProfile?.status || session?.user?.status) === "pending" && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Your account is pending approval. You'll have access to
+                  features once approved.
+                </p>
+              )}
+              {(userProfile?.status || session?.user?.status) ===
+                "approved" && (
+                <p className="text-xs text-green-600 mt-1">
+                  Your account has been approved! You have full access to
+                  features.
+                </p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -133,8 +223,10 @@ export default function Dashboard() {
               Current Linked Wallet
             </label>
             <div className="p-3 bg-gray-50 rounded-md mt-1">
-              {currentWallet ? (
-                <code className="text-sm break-all">{currentWallet}</code>
+              {userProfile?.wallet || currentWallet ? (
+                <code className="text-sm break-all">
+                  {userProfile?.wallet || currentWallet}
+                </code>
               ) : (
                 <span className="text-gray-500">No wallet linked</span>
               )}
@@ -159,7 +251,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {address !== currentWallet && (
+              {address !== (userProfile?.wallet || currentWallet) && (
                 <Button
                   onClick={handleUpdateWallet}
                   disabled={isUpdating}
@@ -171,7 +263,7 @@ export default function Dashboard() {
                 </Button>
               )}
 
-              {address === currentWallet && (
+              {address === (userProfile?.wallet || currentWallet) && (
                 <div className="text-green-600 text-sm flex items-center justify-center p-2 bg-green-50 rounded-md">
                   ✓ This wallet is already linked to your account.
                 </div>
