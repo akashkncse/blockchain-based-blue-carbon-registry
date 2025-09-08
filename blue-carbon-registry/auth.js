@@ -42,31 +42,46 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             return userResult.rows[0];
           }
 
-          // --- Email & Password Login Flow (Fallback) ---
-          const { email, password } = credentials;
-          if (!email || !password) {
-            return null;
+          // --- Email & Password Login Flow ---
+          if (
+            credentials.loginType === "email" ||
+            (!credentials.loginType &&
+              credentials.email &&
+              credentials.password)
+          ) {
+            const { email, password } = credentials;
+
+            if (!email || !password) {
+              console.log("Email or password missing.");
+              return null;
+            }
+
+            const userResult = await db.query(
+              "SELECT * FROM users WHERE email = $1",
+              [email]
+            );
+
+            if (userResult.rows.length === 0) {
+              console.log("No user found with this email.");
+              return null;
+            }
+
+            const user = userResult.rows[0];
+            const passwordsMatch = await bcrypt.compare(
+              password,
+              user.password
+            );
+
+            if (!passwordsMatch) {
+              console.log("Password mismatch.");
+              return null;
+            }
+
+            return user; // Return the full user object
           }
 
-          const userResult = await db.query(
-            "SELECT * FROM users WHERE email = $1",
-            [email]
-          );
-
-          if (userResult.rows.length === 0) {
-            console.log("No user found with this email.");
-            return null;
-          }
-
-          const user = userResult.rows[0];
-          const passwordsMatch = await bcrypt.compare(password, user.password);
-
-          if (!passwordsMatch) {
-            console.log("Password mismatch.");
-            return null;
-          }
-
-          return user; // Return the full user object
+          console.log("No valid login type provided.");
+          return null;
         } catch (error) {
           console.error("Authorization error:", error);
           return null;

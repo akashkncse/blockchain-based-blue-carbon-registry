@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 import { createPublicClient, http } from "viem";
-import { mainnet } from "viem/chains"; // Or your specific chain
+import { polygonAmoy } from "viem/chains";
 import { rolesControllerConfig } from "@/lib/contracts";
-
-const prisma = new PrismaClient();
+import { db } from "@/lib/db";
 
 const publicClient = createPublicClient({
-  chain: mainnet, // CHANGE to your chain
-  transport: http(process.env.RPC_URL), // Ensure RPC_URL is in your .env
+  chain: polygonAmoy, // Using the same chain as your wagmi config
+  transport: http(), // Using default RPC
 });
 
 const DEFAULT_ADMIN_ROLE =
@@ -29,7 +27,7 @@ export async function GET(request) {
 
     // 1. Perform the on-chain check from the backend
     const isAdmin = await publicClient.readContract({
-      ...contractConfig,
+      ...rolesControllerConfig,
       functionName: "hasRole",
       args: [DEFAULT_ADMIN_ROLE, adminAddress],
     });
@@ -43,10 +41,12 @@ export async function GET(request) {
     }
 
     // 3. If the check passes, fetch data from the database
-    const pendingUsers = await prisma.user.findMany({
-      where: { status: "pending", wallet: { not: null } },
-      select: { id: true, name: true, email: true, wallet: true, role: true },
-    });
+    const result = await db.query(
+      "SELECT id, name, email, wallet, role FROM users WHERE status = $1 AND wallet IS NOT NULL",
+      ["pending"]
+    );
+
+    const pendingUsers = result.rows;
 
     return NextResponse.json(pendingUsers, { status: 200 });
   } catch (error) {

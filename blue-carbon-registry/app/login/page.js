@@ -26,7 +26,29 @@ export default function Login() {
   const { connectAsync } = useConnect();
 
   const handleSubmit = async (e) => {
-    // ... (This function remains the same)
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      const result = await signIn("credentials", {
+        redirect: false,
+        email,
+        password,
+        loginType: "email", // Distinguish from wallet login
+      });
+
+      if (result?.error) {
+        setError("Invalid credentials. Please check your email and password.");
+      } else {
+        router.push("/dashboard");
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("An error occurred during login. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleWalletLogin = async () => {
