@@ -5,6 +5,7 @@ import {
   useAccount,
   useWriteContract,
   useWaitForTransactionReceipt,
+  useChainId,
 } from "wagmi";
 import { AdminGuard } from "@/components/Adminguard";
 import { rolesControllerConfig } from "@/lib/contracts";
@@ -17,6 +18,7 @@ import toast from "react-hot-toast";
 function PendingUserRow({ user, onActionSuccess }) {
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  const chainId = useChainId();
 
   const { data: hash, isPending, writeContract } = useWriteContract();
 
@@ -35,6 +37,16 @@ function PendingUserRow({ user, onActionSuccess }) {
   const handleApprove = async () => {
     try {
       setIsApproving(true);
+
+      // Check if we're on the correct chain
+      if (chainId !== 80002) {
+        toast.error(
+          "Please switch to Polygon Amoy testnet (Chain ID: 80002) to approve users"
+        );
+        setIsApproving(false);
+        return;
+      }
+
       const functionName = getFunctionName(user.role);
 
       console.log(
@@ -43,7 +55,10 @@ function PendingUserRow({ user, onActionSuccess }) {
         "with role:",
         user.role,
         "using function:",
-        functionName
+        functionName,
+        "on chain:",
+        chainId,
+        "expected chain: 80002 (Polygon Amoy)"
       );
       toast.loading("Awaiting wallet confirmation...");
 
@@ -97,7 +112,7 @@ function PendingUserRow({ user, onActionSuccess }) {
         } catch (error) {
           toast.dismiss();
           toast.error(
-            "On-chain role granted, but DB update failed. Please update manually."
+            "On-chain role granted, but DB update failed. Please refresh manually."
           );
           console.error("Database update failed:", error);
           setIsApproving(false); // Reset the approving state even on error
@@ -140,6 +155,34 @@ function PendingUserRow({ user, onActionSuccess }) {
       toast.loading("Transaction submitted. Waiting for confirmation...");
     }
   }, [hash]);
+
+  // Add timeout fallback - if confirmation takes too long, allow manual action
+  useEffect(() => {
+    if (hash && isConfirming) {
+      const timeout = setTimeout(() => {
+        console.log(
+          "Transaction confirmation timeout - allowing manual refresh"
+        );
+        toast.dismiss();
+        toast.loading("Transaction taking longer than expected...", {
+          duration: 2000,
+        });
+        setTimeout(() => {
+          toast.dismiss();
+          toast(
+            "Please check if transaction was successful and refresh manually if needed.",
+            {
+              duration: 5000,
+              icon: "⚠️",
+            }
+          );
+          setIsApproving(false); // Reset state to allow manual intervention
+        }, 2000);
+      }, 30000); // 30 second timeout
+
+      return () => clearTimeout(timeout);
+    }
+  }, [hash, isConfirming]);
 
   // Helper function to call our backend API for updating user status
   const updateUserStatus = async (id, status) => {
@@ -209,7 +252,45 @@ function PendingUserRow({ user, onActionSuccess }) {
           >
             {isRejecting ? "Rejecting..." : "Reject"}
           </button>
+          {(isApproving || isConfirming) && hash && (
+            <button
+              onClick={async () => {
+                console.log("Manual completion triggered for hash:", hash);
+                try {
+                  await updateUserStatus(user.id, "approved");
+                  toast.success(`${user.name} manually marked as approved!`);
+                  setIsApproving(false);
+                  onActionSuccess();
+                } catch (error) {
+                  toast.error("Failed to manually update status");
+                  console.error("Manual update failed:", error);
+                }
+              }}
+              className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              title="Force complete if transaction is stuck"
+            >
+              Force Complete
+            </button>
+          )}
         </div>
+        {/* Debug info - remove in production */}
+        {(hash || isApproving || isConfirming) && (
+          <div className="mt-1 text-xs text-gray-400">
+            {hash && (
+              <div>
+                Tx: {hash.slice(0, 10)}...{hash.slice(-6)}
+              </div>
+            )}
+            <div>
+              States: {isApproving ? "✓" : "✗"}Approving{" "}
+              {isConfirming ? "✓" : "✗"}Confirming {isPending ? "✓" : "✗"}
+              Pending
+            </div>
+            <div>
+              Chain: {chainId} {chainId === 80002 ? "✅" : "❌"}
+            </div>
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -261,7 +342,19 @@ function AdminDashboard() {
 
   return (
     <div className="max-w-6xl mx-auto mt-10 p-6">
-      <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+        <button
+          onClick={() => {
+            console.log("Manual refresh triggered");
+            handleActionSuccess();
+            toast.success("Refreshing pending requests...");
+          }}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          🔄 Refresh
+        </button>
+      </div>
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <h2 className="text-xl font-semibold p-4 border-b bg-gray-50">
           Pending Role Requests ({pendingUsers.length})

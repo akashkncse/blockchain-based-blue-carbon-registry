@@ -2,6 +2,8 @@
 import React from "react";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -18,25 +20,63 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPw] = useState("");
   const [role, setRole] = useState();
-  const [loading, setLoading] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const router = useRouter();
   const handleSubmit = async (e) => {
-    setLoading(1);
     e.preventDefault();
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
     try {
+      // Step 1: Create the user account
       const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, password, email, role }),
       });
+
       if (!res.ok) {
-        throw new Error("Signup failed");
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Signup failed");
       }
-      const data = await res.json();
-      console.log("Success: ", data);
+
+      const userData = await res.json();
+      console.log("Signup successful:", userData);
+
+      // Step 2: Automatically sign in the user
+      const signInResult = await signIn("credentials", {
+        redirect: false,
+        email,
+        password,
+        loginType: "email",
+      });
+
+      if (signInResult?.error) {
+        // Signup was successful but auto-login failed
+        setSuccess("Account created successfully!");
+        setError("Please log in manually.");
+        setTimeout(() => {
+          router.push("/login");
+        }, 2000);
+      } else {
+        // Both signup and login were successful
+        setSuccess(
+          "Account created and logged in successfully! Redirecting..."
+        );
+        console.log("Auto-login successful");
+        setTimeout(() => {
+          router.push("/dashboard");
+        }, 1500);
+      }
     } catch (error) {
-      console.log(error);
+      console.error("Signup error:", error);
+      setError(error.message || "An error occurred during signup");
+    } finally {
+      setLoading(false);
     }
-    setLoading(0);
   };
   return (
     <>
@@ -45,6 +85,8 @@ export default function Signup() {
         onSubmit={handleSubmit}
       >
         <h2 className="text-2xl font-bold">Sign Up</h2>
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+        {success && <p className="text-green-500 text-sm">{success}</p>}
         <Input
           type="text"
           placeholder="Name"

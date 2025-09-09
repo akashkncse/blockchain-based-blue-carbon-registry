@@ -314,7 +314,7 @@ const rolesControllerABI = [
   /* ... PASTE ABI FROM RolesController.json ... */
 ];
 export const rolesControllerConfig = {
-  address: "0xA096D903A1D9dFEbf8FBb1f15c2B35598cC80664",
+  address: "0x59397A6b8a0C850f49a8D44095e49B6BbeB5f221",
   abi: rolesControllerABI,
 };
 

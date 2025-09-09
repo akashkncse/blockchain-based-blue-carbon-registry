@@ -32,7 +32,7 @@ export function Providers({ children }) {
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider
           modalSize="compact"
-          initialChain={1} // Ethereum mainnet
+          initialChain={80002} // Polygon Amoy testnet
         >
           {children}
         </RainbowKitProvider>
